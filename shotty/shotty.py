@@ -14,10 +14,52 @@ def filter_instances(project):
         instances = ec2.instances.all()
     return instances
 
-
 @click.group()
+def cli():
+    """Shotty manages snapshots"""
+
+@cli.group('instances')
 def instances():
         """Commands for Instances"""
+@cli.group('volumes')
+def volumes():
+    """Commands for Volumes"""
+@cli.group('snapshots')
+def snapshots():
+    """Commands for Snapshots"""
+
+@snapshots.command('list')
+@click.option('--project',default=None, help="Only snapshots for project (tag: Project: <name>)")
+def list_snapshots(project):
+    "List EBS snapshots volumes"
+
+    instances = filter_instances(project)
+
+    for i in instances:
+        for v in i.volumes.all():
+            for s in v.snapshots.all():
+                print(','.join((s.id,v.id,i.id,s.state,
+                s.progress,
+                s.start_time.strftime("%c")
+                )))
+    return
+
+
+@volumes.command('list')
+@click.option('--project',default=None, help="Only volumes for project (tag: Project: <name>)")
+def list_volumes(project):
+    "List EBS volumes"
+
+    instances = filter_instances(project)
+
+    for i in instances:
+        for v in i.volumes.all():
+            print(','.join((v.id,i.id,v.state,
+            v.encrypted and "Encrypted" or "Not Encrypted",
+            str(v.size) + "GiB"
+            )))
+    return
+
 
 @instances.command('list')
 @click.option('--project',default=None, help="Only instances for project (tag: Project: <name>)")
@@ -36,6 +78,29 @@ def list_instances(project):
         i.public_dns_name,
         "Project: " + tags.get('Project','<no project>')
         )))
+    return
+
+@instances.command('snapshot')
+@click.option('--project',default=None, help="Only instances for project (tag: Project: <name>)")
+def create_snapshot(project):
+    "Snapshot EC2 instances - all volumes"
+    instances = filter_instances(project)
+
+    for i in instances:
+
+        print("Stopping {0}".format(i.id))
+        i.stop()
+        i.wait_until_stopped()
+
+        for v in i.volumes.all():
+            print("Snapshottin {0}...".format(v.id))
+            v.create_snapshot(Description="Created by Shotty")
+        i.start()
+        i.wait_until_running()
+        print("Starting {0}".format(i.id))
+
+    print("Jobs Done!")
+
     return
 
 @instances.command('stop')
@@ -62,4 +127,4 @@ def start_instances(project):
 
 if __name__ == "__main__":
 
-    instances()
+    cli()
